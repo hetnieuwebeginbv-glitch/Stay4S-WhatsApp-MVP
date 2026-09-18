@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stay4S WhatsApp AI -- Test Chat</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+.header { background: #1e293b; padding: 0.75rem 1rem; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 0.75rem; }
+.header .logo { width: 32px; height: 32px; background: #38bdf8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #0f172a; font-size: 0.8rem; }
+.header h1 { font-size: 0.95rem; color: #38bdf8; }
+.header .sub { font-size: 0.7rem; color: #64748b; margin-left: auto; }
+.header a { color: #38bdf8; text-decoration: none; font-size: 0.75rem; }
+.chat-area { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.msg { max-width: 75%; padding: 0.75rem 1rem; border-radius: 0.75rem; font-size: 0.9rem; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+.msg.user { align-self: flex-end; background: #1e40af; color: #fff; border-bottom-right-radius: 0.25rem; }
+.msg.ai { align-self: flex-start; background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 0.25rem; }
+.msg.transfer { border-left: 3px solid #eab308; }
+.msg.error { border-left: 3px solid #ef4444; }
+.msg .meta { font-size: 0.65rem; color: #64748b; margin-top: 0.3rem; }
+.msg .meta .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; margin-right: 4px; }
+.badge.ollama { background: #166534; color: #86efac; }
+.badge.runpod { background: #1e40af; color: #93c5fd; }
+.badge.transfer { background: #713f12; color: #fde047; }
+.badge.error { background: #7f1d1d; color: #fca5a5; }
+.typing { align-self: flex-start; color: #64748b; font-size: 0.8rem; padding: 0.5rem; }
+.typing span { animation: blink 1.4s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+.input-area { background: #1e293b; padding: 1rem; border-top: 1px solid #334155; display: flex; gap: 0.75rem; }
+.input-area input { flex: 1; background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem 1rem; color: #e2e8f0; font-size: 0.9rem; outline: none; }
+.input-area input:focus { border-color: #38bdf8; }
+.input-area input::placeholder { color: #64748b; }
+.input-area button { background: #38bdf8; color: #0f172a; border: none; border-radius: 0.5rem; padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; }
+.input-area button:hover { background: #7dd3fc; }
+.input-area button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+.name-bar { background: #1e293b; padding: 0.5rem 1rem; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.name-bar input { background: #0f172a; border: 1px solid #334155; border-radius: 0.25rem; padding: 0.3rem 0.5rem; color: #e2e8f0; font-size: 0.8rem; width: 120px; outline: none; }
+.name-bar label { color: #64748b; }
+</style>
+</head>
+<body>
+<div class="header">
+<div class="logo">S4S</div>
+<h1>Stay4S WhatsApp AI -- Test Chat</h1>
+<span class="sub"><a href="/">Dashboard</a></span>
+</div>
+<div class="name-bar">
+<label>Je naam:</label>
+<input type="text" id="name-input" value="Mitchell" maxlength="20">
+<label>Telefoon:</label>
+<input type="text" id="phone-input" value="+31612345678" maxlength="15">
+</div>
+<div class="chat-area" id="chat">
+<div class="msg ai">Hoi! Ik ben de Stay4S AI klantenservice. Stel je vraag hieronder en ik antwoord zo snel mogelijk. <span style="color:#64748b;font-size:0.75rem">(Werkt op qwen3:1.7b lokaal op Pi 5, ~25 seconden per antwoord)</span></div>
+</div>
+<div class="input-area">
+<input type="text" id="msg-input" placeholder="Typ je bericht..." maxlength="500" autofocus>
+<button id="send-btn" onclick="sendMessage()">Verstuur</button>
+</div>
+<script>
+const chat = document.getElementById('chat');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const nameInput = document.getElementById('name-input');
+const phoneInput = document.getElementById('phone-input');
+let msgCounter = 0;
+let sending = false;
+
+msgInput.addEventListener('keydown', function(e) {
+if (e.key === 'Enter' && !sending) sendMessage();
+});
+
+async function sendMessage() {
+const text = msgInput.value.trim();
+if (!text || sending) return;
+sending = true;
+sendBtn.disabled = true;
+msgInput.value = '';
+
+// Show user message
+const userDiv = document.createElement('div');
+userDiv.className = 'msg user';
+userDiv.textContent = text;
+chat.appendChild(userDiv);
+chat.scrollTop = chat.scrollHeight;
+
+// Show typing indicator
+const typingDiv = document.createElement('div');
+typingDiv.className = 'typing';
+typingDiv.innerHTML = 'AI typt<span>.</span><span>.</span><span>.</span>';
+chat.appendChild(typingDiv);
+chat.scrollTop = chat.scrollHeight;
+
+msgCounter++;
+const msgId = 'chat_' + Date.now() + '_' + msgCounter;
+
+try {
+const resp = await fetch('/webhook', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({
+from: phoneInput.value,
+body: text,
+message_id: msgId,
+profile_name: nameInput.value
+})
+});
+const data = await resp.json();
+
+// Remove typing
+typingDiv.remove();
+
+// Show AI response
+const aiDiv = document.createElement('div');
+aiDiv.className = 'msg ai ' + (data.transferred ? 'transfer' : data.source === 'error' ? 'error' : '');
+const srcBadge = '<span class="badge ' + data.source + '">' + data.source + '</span>';
+const confBadge = data.confidence > 0 ? ' &middot; conf: ' + data.confidence.toFixed(2) : '';
+const srcList = data.rag_sources && data.rag_sources.length > 0
+? ' &middot; bron: ' + data.rag_sources.map(s => s.title).join(', ')
+: '';
+aiDiv.innerHTML = data.reply + '<div class="meta">' + srcBadge + confBadge + srcList + '</div>';
+chat.appendChild(aiDiv);
+chat.scrollTop = chat.scrollHeight;
+} catch (e) {
+typingDiv.remove();
+const errDiv = document.createElement('div');
+errDiv.className = 'msg ai error';
+errDiv.textContent = 'Error: kon geen verbinding maken met de server.';
+chat.appendChild(errDiv);
+chat.scrollTop = chat.scrollHeight;
+}
+
+sending = false;
+sendBtn.disabled = false;
+msgInput.focus();
+}
+</script>
+</body>
+</html>

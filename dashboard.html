@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stay4S WhatsApp AI Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+.header { background: #1e293b; padding: 1rem 2rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 1.25rem; color: #38bdf8; }
+.header .status { display: flex; gap: 1rem; font-size: 0.85rem; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.green { background: #22c55e; } .red { background: #ef4444; } .yellow { background: #eab308; }
+.container { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; padding: 1rem 2rem; max-width: 1400px; margin: 0 auto; }
+.card { background: #1e293b; border-radius: 0.5rem; padding: 1rem; border: 1px solid #334155; }
+.card h2 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+.stat:last-child { border-bottom: none; }
+.stat .value { font-weight: bold; color: #38bdf8; }
+.conv { background: #0f172a; border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #38bdf8; }
+.conv.transfer { border-left-color: #eab308; }
+.conv.error { border-left-color: #ef4444; }
+.conv .meta { font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem; }
+.conv .msg { font-size: 0.85rem; margin: 0.15rem 0; }
+.conv .msg strong { color: #94a3b8; }
+.conv .reply { color: #38bdf8; }
+.source-badge { display: inline-block; font-size: 0.65rem; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
+.source-runpod { background: #1e40af; color: #93c5fd; }
+.source-ollama { background: #166534; color: #86efac; }
+.source-transfer { background: #713f12; color: #fde047; }
+.source-error { background: #7f1d1d; color: #fca5a5; }
+.doc-list { font-size: 0.8rem; }
+.doc-list li { padding: 0.25rem 0; list-style: none; border-bottom: 1px solid #334155; }
+.doc-list li:last-child { border-bottom: none; }
+.doc-list .doc-title { color: #38bdf8; }
+.doc-list .doc-source { color: #64748b; font-size: 0.7rem; }
+.empty { color: #64748b; text-align: center; padding: 2rem; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Stay4S WhatsApp AI Dashboard</h1>
+<div class="status">
+<span><span class="status-dot green"></span>Server Online</span>
+<span id="endpoint-status"><span class="status-dot yellow"></span>Endpoint: Checking...</span>
+<span id="last-update">-</span>
+</div>
+</div>
+<div class="container">
+<div>
+<div class="card">
+<h2>Statistieken</h2>
+<div class="stat"><span>Totale gesprekken</span><span class="value" id="total-convs">0</span></div>
+<div class="stat"><span>Doorschakelingen</span><span class="value" id="total-transfers">0</span></div>
+<div class="stat"><span>Gem. confidence</span><span class="value" id="avg-confidence">-</span></div>
+<div class="stat"><span>RAG documenten</span><span class="value" id="doc-count">0</span></div>
+<div class="stat"><span>Active source</span><span class="value" id="active-source">-</span></div>
+</div>
+<div class="card">
+<h2>Knowledge Base</h2>
+<ul class="doc-list" id="doc-list"></ul>
+</div>
+</div>
+<div>
+<div class="card">
+<h2>Recente Gesprekken</h2>
+<div id="conversations"><div class="empty">Nog geen gesprekken</div></div>
+</div>
+</div>
+</div>
+<script>
+async function refresh() {
+try {
+const [stats, docs, convs] = await Promise.all([
+fetch('/health').then(r=>r.json()),
+fetch('/documents').then(r=>r.json()),
+fetch('/conversations?limit=30').then(r=>r.json())
+]);
+document.getElementById('total-convs').textContent = stats.total_conversations || 0;
+document.getElementById('total-transfers').textContent = (convs.conversations||[]).filter(c=>c.transferred).length;
+document.getElementById('doc-count').textContent = docs.count || 0;
+const epStatus = stats.rag_status === 'ok' ? 'green' : 'red';
+document.getElementById('endpoint-status').innerHTML = '<span class="status-dot '+epStatus+'"></span>RAG: ' + (stats.rag_status||'?');
+document.getElementById('last-update').textContent = new Date().toLocaleTimeString('nl-NL');
+const confs = (convs.conversations||[]).map(c=>c.confidence).filter(c=>c>0);
+const avgConf = confs.length ? (confs.reduce((a,b)=>a+b,0)/confs.length).toFixed(2) : '-';
+document.getElementById('avg-confidence').textContent = avgConf;
+const sources = (convs.conversations||[]).map(c=>c.source);
+const lastSource = sources[sources.length-1] || '-';
+document.getElementById('active-source').textContent = lastSource;
+const docList = document.getElementById('doc-list');
+docList.innerHTML = '';
+(docs.documents||[]).forEach(d=>{
+const li = document.createElement('li');
+li.innerHTML = '<span class="doc-title">'+d.title+'</span><br><span class="doc-source">'+d.source+'</span>';
+docList.appendChild(li);
+});
+const convList = document.getElementById('conversations');
+if(!convs.conversations || convs.conversations.length===0) {
+convList.innerHTML = '<div class="empty">Nog geen gesprekken</div>';
+} else {
+convList.innerHTML = '';
+convs.conversations.reverse().forEach(c=>{
+const div = document.createElement('div');
+div.className = 'conv ' + (c.transferred?'transfer':c.source==='error'?'error':'');
+const time = new Date(c.timestamp).toLocaleTimeString('nl-NL');
+const srcBadge = '<span class="source-badge source-'+c.source+'">'+c.source+'</span>';
+div.innerHTML = '<div class="meta">'+c.name+' &middot; '+time+srcBadge+' &middot; conf: '+(c.confidence||0).toFixed(2)+'</div>'+
+'<div class="msg"><strong>Klant:</strong> '+escHtml(c.customer_message)+'</div>'+
+'<div class="msg reply"><strong>AI:</strong> '+escHtml(c.ai_response)+'</div>';
+convList.appendChild(div);
+});
+}
+} catch(e) {
+console.error('Refresh failed:', e);
+}
+}
+function escHtml(s){return s?s.replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
