@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stay4Safe AI -- Phishing & Scam Detector</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a1a;color:#fff;min-height:100vh}
+.hero{background:linear-gradient(135deg,#0a0a1a,#1a1a3e);padding:60px 20px;text-align:center}
+.hero h1{font-size:2.5em;margin-bottom:15px;background:linear-gradient(90deg,#ef4444,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{font-size:1.2em;color:#94a3b8;max-width:600px;margin:0 auto 30px}
+.badge{display:inline-block;background:rgba(239,68,68,0.2);color:#ef4444;padding:5px 15px;border-radius:20px;font-size:0.9em;margin-bottom:20px}
+.checker{max-width:700px;margin:30px auto;background:#11112a;border-radius:16px;padding:30px;border:1px solid #1e293b}
+.checker h2{font-size:1.3em;margin-bottom:15px;color:#f59e0b}
+textarea{width:100%;min-height:120px;background:#0a0a1a;border:1px solid #334155;border-radius:8px;color:#fff;padding:15px;font-family:inherit;font-size:14px;resize:vertical}
+textarea:focus{outline:none;border-color:#ef4444}
+button{background:linear-gradient(90deg,#ef4444,#f59e0b);color:#fff;border:none;border-radius:8px;padding:12px 30px;font-size:1em;cursor:pointer;margin-top:15px;width:100%;transition:transform 0.2s}
+button:hover{transform:scale(1.02)}
+button:disabled{opacity:0.5;cursor:wait}
+.result{margin-top:20px;padding:20px;border-radius:8px;display:none}
+.result.show{display:block}
+.result.hoog{background:rgba(239,68,68,0.15);border:1px solid #ef4444}
+.result.medium{background:rgba(245,158,11,0.15);border:1px solid #f59e0b}
+.result.laag{background:rgba(34,197,94,0.15);border:1px solid #22c55e}
+.score{font-size:2em;font-weight:bold;margin-bottom:10px}
+.score.hoog{color:#ef4444}
+.score.medium{color:#f59e0b}
+.score.laag{color:#22c55e}
+.report{white-space:pre-wrap;font-family:monospace;font-size:13px;color:#cbd5e1;margin-top:15px;line-height:1.6}
+.features{max-width:900px;margin:40px auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.feature{background:#11112a;border-radius:12px;padding:25px;border:1px solid #1e293b}
+.feature h3{color:#f59e0b;margin-bottom:10px;font-size:1.1em}
+.feature p{color:#94a3b8;font-size:0.95em;line-height:1.5}
+.pricing{max-width:700px;margin:40px auto;text-align:center}
+.pricing h2{font-size:1.8em;margin-bottom:20px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px}
+.plan{background:#11112a;border-radius:12px;padding:25px;border:1px solid #1e293b}
+.plan.featured{border-color:#f59e0b;transform:scale(1.05)}
+.plan h3{color:#fff;margin-bottom:10px}
+.plan .price{font-size:2em;font-weight:bold;color:#f59e0b;margin:10px 0}
+.plan ul{list-style:none;text-align:left;margin-top:15px}
+.plan ul li{color:#94a3b8;padding:5px 0;font-size:0.9em}
+.plan ul li:before{content:"OK ";color:#22c55e;font-weight:bold}
+.footer{text-align:center;padding:30px;color:#475569;font-size:0.85em}
+.footer a{color:#ef4444;text-decoration:none}
+.whatsapp-btn{display:inline-block;background:#25D366;color:#fff;padding:12px 25px;border-radius:8px;text-decoration:none;margin-top:15px;font-weight:bold}
+</style>
+</head>
+<body>
+
+<div class="hero">
+<span class="badge">Stay4Safe AI -- Privacy-first scam detectie</span>
+<h1>Is dit bericht een scam?</h1>
+<p>Plak een verdacht bericht hieronder en Stay4Safe AI analyseert het direct. Geen data opgeslagen, geen cloud, 100% lokaal op eigen infrastructuur.</p>
+</div>
+
+<div class="checker">
+<h2>Plak hier uw verdachte bericht:</h2>
+<textarea id="message" placeholder="Bijv: 'Uw pakket staat klaar bij de douane. Betaal EUR 2.95 invoerrechten via deze link: http://bit.ly/pakket-track'"></textarea>
+<button id="check-btn" onclick="checkMessage()">Analyseer bericht</button>
+<div id="result" class="result"></div>
+</div>
+
+<div class="features">
+<div class="feature">
+<h3>Real-time analyse</h3>
+<p>Stay4Safe AI checkt 10+ scam indicatoren in seconden: urgentie, geldverzoeken, imitatie, verdachte links en meer.</p>
+</div>
+<div class="feature">
+<h3>Privacy-first</h3>
+<p>Uw berichten worden verwerkt op onze eigen Europese infra. Geen Big Tech, geen cloud, geen data opslag.</p>
+</div>
+<div class="feature">
+<h3>Nederlandse context</h3>
+<p>Getraind op Nederlandse scam patronen: Belastingdienst-fraude, pakket-scams, DigiD-phishing, abonnement-traps.</p>
+</div>
+<div class="feature">
+<h3>WhatsApp integratie</h3>
+<p>Stuur een verdacht bericht door naar ons WhatsApp-nummer en krijg direct een analyse terug. Handig voor ouders en familie.</p>
+</div>
+</div>
+
+<div class="pricing">
+<h2>Prijzen</h2>
+<div class="plans">
+<div class="plan">
+<h3>Gratis</h3>
+<div class="price">EUR 0</div>
+<ul>
+<li>5 checks per maand</li>
+<li>Web interface</li>
+<li>Risico score + advies</li>
+<li>Geen registratie nodig</li>
+</ul>
+</div>
+<div class="plan featured">
+<h3>Persoonlijk</h3>
+<div class="price">EUR 4.99</div>
+<ul>
+<li>Onbeperkt checks</li>
+<li>WhatsApp doorsturen</li>
+<li>Gedetailleerd rapport</li>
+<li>Real-time meldingen</li>
+</ul>
+</div>
+<div class="plan">
+<h3>Zakelijk</h3>
+<div class="price">EUR 29</div>
+<ul>
+<li>Tot 10 medewerkers</li>
+<li>Bulk analyse</li>
+<li>Dashboard + statistieken</li>
+<li>API toegang</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="footer">
+<p>Stay4Safe AI is een product van Stay4S -- Soevereine AI voor Nederland.</p>
+<p><a href="https://stay4s.com">stay4s.com</a> | KvK 86200860 | <a href="/privacy">Privacy</a> | <a href="/terms">Voorwaarden</a></p>
+<p>Powered by eigen AI op eigen infrastructuur. Geen Big Tech.</p>
+</div>
+
+<script>
+const TUNNEL = "https://blast-wifi-isolated-retention.trycloudflare.com";
+async function checkMessage() {
+  const text = document.getElementById("message").value.trim();
+  if (!text) { alert("Plak eerst een bericht om te analyseren."); return; }
+  const btn = document.getElementById("check-btn");
+  const result = document.getElementById("result");
+  btn.disabled = true;
+  btn.textContent = "Analyseren...";
+  result.className = "result";
+  try {
+    const resp = await fetch(TUNNEL + "/scan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: text})
+    });
+    const data = await resp.json();
+    const level = data.risk_level.toLowerCase();
+    result.className = "result show " + level;
+    result.innerHTML = '<div class="score ' + level + '">' + data.risk_score + '/100 -- ' + data.risk_level + '</div>' +
+      '<div class="report">' + data.report.replace(/\n/g, "<br>") + "</div>";
+  } catch(e) {
+    result.className = "result show hoog";
+    result.innerHTML = '<div class="score hoog">Error</div><div class="report">Kan geen verbinding maken met Stay4Safe AI. Probeer later opnieuw.</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = "Analyseer bericht";
+}
+</script>
+</body>
+</html>

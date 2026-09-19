@@ -6,23 +6,34 @@ genereert antwoord via StayLM2, stuurt terug.
 import os
 import time
 import json
+import hashlib
+import hmac
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional
+
+import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from rag_engine import RAGEngine
 from staylm_client import generate_response
+from scam_detector import analyze_message
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 logger = logging.getLogger("stay4s.whatsapp")
 
-app = FastAPI(title="Stay4S WhatsApp AI", version="0.1.0")
+app = FastAPI(title="Stay4S WhatsApp AI", version="0.2.0")
 rag = RAGEngine()
 conversations: List[Dict] = []
 
+# Meta tokens
+VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "stay4s_verify_2026")
+META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
+META_PHONE_NUMBER_ID = os.environ.get("META_PHONE_NUMBER_ID", "")
+META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
+
+
 def hash_phone(phone: str) -> str:
-    import hashlib
     return hashlib.sha256(phone.encode()).hexdigest()[:12]
 
 
@@ -31,7 +42,7 @@ async def health():
     return {
         "status": "ok",
         "service": "stay4s-whatsapp-ai",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "rag_documents": rag.count(),
         "rag_status": "ok" if rag.count() > 0 else "empty",
         "total_conversations": len(conversations),
@@ -56,19 +67,32 @@ async def dashboard():
 
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
-    # WhatsApp Business API webhook endpoint.
-    # Verwacht: from, body, message_id, profile_name
+    # Webhook signature verification (HMAC-SHA256)
+    if META_APP_SECRET:
+        signature = request.headers.get("X-Hub-Signature-256", "")
+        body = await request.body()
+        if signature:
+            expected = "sha256=" + hmac.new(
+                META_APP_SECRET.encode(), body, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(signature, expected):
+                logger.warning("Webhook signature verification FAILED")
+                return JSONResponse(status_code=403, content={"error": "invalid signature"})
+
     try:
-        data = await request.json()
+        data = json.loads(body)
     except Exception:
-        data = dict(await request.form())
+        body_str = body.decode("utf-8", errors="replace")
+        try:
+            data = json.loads(body_str)
+        except Exception:
+            return {"status": "error", "reason": "invalid json"}
 
     # Check if this is a Meta WhatsApp webhook (has "entry" key)
     if "entry" in data:
         parsed = _parse_meta_webhook(data)
         if not parsed:
             return {"status": "ignored", "reason": "no message in Meta webhook"}
-        # Replace data with parsed values
         data = parsed
         is_meta = True
     else:
@@ -88,7 +112,8 @@ async def whatsapp_webhook(request: Request):
     context, sources = rag.get_context(message)
 
     # 2. Bepaal of doorverwijzing nodig is
-    transfer_keywords = ["medewerker", "mens", "iemand", "telefoon", "bellen", "spreken"]
+    # FIX: "iemand" verwijderd (gaf false positives bij "is er iemand?")
+    transfer_keywords = ["medewerker", "mens", "telefoon", "bellen", "spreken"]
     needs_transfer = any(kw in message.lower() for kw in transfer_keywords)
 
     # 3. Genereer antwoord
@@ -107,7 +132,14 @@ async def whatsapp_webhook(request: Request):
         if context:
             full_prompt = system_prompt + "\n\nBedrijfsinformatie:\n" + context + "\n\nKlant: " + message
         else:
-            full_prompt = system_prompt + "\n\nKlant: " + message
+            # FIX: RAG-empty check -- geen context = expliciet "weet niet" instructie
+            full_prompt = (
+                system_prompt
+                + "\n\nIMPORTANT: Er is geen bedrijfsinformatie beschikbaar voor deze vraag. "
+                + "Je MOET eerlijk zeggen: 'Dat staat niet in mijn informatie, zal ik u doorverbinden met een medewerker?' "
+                + "Beantwoord de vraag NIET met algemene kennis. Geef alleen aan dat je het niet weet."
+                + "\n\nKlant: " + message
+            )
 
         result = await generate_response(full_prompt, max_tokens=300, temperature=0.5)
         reply_text = result["text"]
@@ -178,30 +210,22 @@ async def delete_document(doc_id: int):
     return {"error": "not found"}
 
 
-
 # --- WhatsApp Business API Integration ---
-
-VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "stay4s_verify_2026")
-META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
-META_PHONE_NUMBER_ID = os.environ.get("META_PHONE_NUMBER_ID", "")
-
 
 @app.get("/webhook")
 async def webhook_verify(request: Request):
-    # Meta webhook verification challenge
     params = request.query_params
     mode = params.get("hub.mode", "")
     token = params.get("hub.verify_token", "")
     challenge = params.get("hub.challenge", "")
     if mode == "subscribe" and token == VERIFY_TOKEN:
         logger.info("WhatsApp webhook verified")
-        return challenge
+        return PlainTextResponse(content=challenge)
     logger.warning(f"Webhook verify failed: mode={mode} token={token[:10]}...")
     return JSONResponse(status_code=403, content={"error": "verification failed"})
 
 
 async def _send_whatsapp_reply(to_phone: str, text: str):
-    # Send reply back to WhatsApp via Meta API
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         logger.warning("Meta tokens not configured, skipping WhatsApp reply")
         return
@@ -220,7 +244,6 @@ async def _send_whatsapp_reply(to_phone: str, text: str):
 
 
 def _parse_meta_webhook(data: dict):
-    # Extract message from Meta WhatsApp webhook format
     try:
         entry = data.get("entry", [{}])[0]
         changes = entry.get("changes", [{}])[0]
@@ -230,7 +253,7 @@ def _parse_meta_webhook(data: dict):
         if not messages:
             return None
         msg = messages[0]
-        phone = msg.get("from", "")
+        phone = msg.get(" "    , "")
         text = msg.get("text", {}).get("body", "")
         msg_id = msg.get("id", f"msg_{int(time.time())}")
         name = contacts[0].get("profile", {}).get("name", "Klant") if contacts else "Klant"
@@ -265,27 +288,144 @@ async def data_deletion_page():
 
 @app.post("/data-deletion-callback")
 async def data_deletion_callback(request: Request):
-    # Meta Data Deletion Callback
-    # Meta stuurt een signed_request wanneer een gebruiker gegevens verwijdert via Facebook
     try:
         data = await request.json()
     except Exception:
         data = dict(await request.form())
-    
     signed_request = data.get("signed_request", "")
     logger.info(f"Data deletion callback received: {signed_request[:30]}...")
-    
-    # TODO: verify signed_request with Meta app secret
-    # For now, log and acknowledge
-    
     deletion_code = f"stay4s-deletion-{int(time.time())}"
     url = f"https://blast-wifi-isolated-retention.trycloudflare.com/data-deletion"
-    
     return JSONResponse(content={
         "url": url,
         "deletion_code": deletion_code,
         "confirmation_code": deletion_code
     })
+
+
+# --- Chat Widget API (voor stay4s.com embed) ---
+
+@app.post("/widget")
+async def chat_widget_api(request: Request):
+    # API endpoint voor stay4s.com chat widget
+    try:
+        data = await request.json()
+    except Exception:
+        return {"error": "invalid json"}
+    message = data.get("message", "")
+    if not message:
+        return {"error": "no message"}
+    context, sources = rag.get_context(message)
+    transfer_keywords = ["medewerker", "mens", "telefoon", "bellen", "spreken"]
+    needs_transfer = any(kw in message.lower() for kw in transfer_keywords)
+    if needs_transfer:
+        return {"reply": "Ik schakel u door naar een medewerker. Een moment geduld alstublieft.", "source": "transfer"}
+    system_prompt = (
+        "Je bent Stay4S AI, een vriendelijke Nederlandse AI-assistent. "
+        "Beantwoord kort en duidelijk in het Nederlands (max 150 woorden). "
+        "Gebruik de bedrijfsinformatie als bron. "
+        "Als je het niet weet, zeg het eerlijk."
+    )
+    if context:
+        full_prompt = system_prompt + "\n\nBedrijfsinformatie:\n" + context + "\n\nKlant: " + message
+    else:
+        full_prompt = system_prompt + "\n\nIMPORTANT: Geen bedrijfsinformatie beschikbaar. Zeg eerlijk dat je het niet weet.\n\nKlant: " + message
+    result = await generate_response(full_prompt, max_tokens=200, temperature=0.5)
+    conv = {
+        "id": f"widget_{int(time.time())}",
+        "timestamp": datetime.now().isoformat(),
+        "phone": "widget",
+        "name": "Website bezoeker",
+        "customer_message": message,
+        "ai_response": result["text"],
+        "source": result["source"],
+        "confidence": result["confidence"],
+        "rag_sources": sources,
+        "transferred": needs_transfer,
+    }
+    conversations.append(conv)
+    return {"reply": result["text"], "source": result["source"], "confidence": result["confidence"]}
+
+
+
+
+# --- Stay4Safe AI -- Phishing & Scam Detector ---
+
+@app.post("/scan")
+async def scan_message(request: Request):
+    # Analyseer bericht op phishing/scam indicators
+    try:
+        data = await request.json()
+    except Exception:
+        return {"error": "invalid json"}
+    message = data.get("message", "")
+    if not message:
+        return {"error": "no message"}
+    result = analyze_message(message)
+    logger.info(f"Stay4Safe scan: score={result['risk_score']} level={result['risk_level']}")
+    return result
+
+
+@app.get("/stay4safe")
+async def stay4safe_page():
+    path = os.path.join(os.path.dirname(__file__), "stay4safe.html")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="text/html")
+    return {"error": "stay4safe.html not found"}
+
+
+@app.post("/safe")
+async def whatsapp_safe_webhook(request: Request):
+    # WhatsApp webhook for Stay4Safe -- analyseer doorgestuurd bericht
+    try:
+        data = await request.json()
+    except Exception:
+        data = dict(await request.form())
+    
+    if "entry" in data:
+        parsed = _parse_meta_webhook(data)
+        if not parsed:
+            return {"status": "ignored"}
+        data = parsed
+        is_meta = True
+    else:
+        is_meta = False
+    
+    phone = data.get("from", data.get("From", "unknown"))
+    message = data.get("body", data.get("Body", ""))
+    name = data.get("profile_name", data.get("ProfileName", "Gebruiker"))
+    
+    if not message:
+        return {"status": "ignored", "reason": "empty message"}
+    
+    logger.info(f"Stay4Safe: {name} ({phone}): {message[:80]}")
+    
+    # Analyseer op scam
+    result = analyze_message(message)
+    
+    # Bouw WhatsApp-vriendelijk antwoord
+    reply = result["report"]
+    
+    # Sla op in conversations
+    conv = {
+        "id": f"safe_{int(time.time())}",
+        "timestamp": datetime.now().isoformat(),
+        "phone": hash_phone(phone),
+        "name": name,
+        "customer_message": message,
+        "ai_response": reply,
+        "source": "stay4safe",
+        "confidence": result["risk_score"] / 100.0,
+        "rag_sources": [],
+        "transferred": False,
+    }
+    conversations.append(conv)
+    
+    # Stuur terug via WhatsApp
+    if is_meta and phone and phone != "unknown":
+        await _send_whatsapp_reply(phone, reply)
+    
+    return {"status": "ok", "risk_score": result["risk_score"], "risk_level": result["risk_level"], "reply": reply}
 
 
 if __name__ == "__main__":
