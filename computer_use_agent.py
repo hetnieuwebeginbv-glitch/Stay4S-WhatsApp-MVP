@@ -121,7 +121,7 @@ def parse_command(response):
     except:
         pass
     resp_lower = response.lower()
-    if any(w in resp_lower for w in ["done", "klaar", "voltooid", "finished"]):
+    if any(w in resp_lower for w in ["done", "klaar", "voltooid", "finished", "sluit", "sluiten", "close"]):
         return "DONE"
     if "enter" in resp_lower and "press" in resp_lower:
         return "PRESS: enter"
