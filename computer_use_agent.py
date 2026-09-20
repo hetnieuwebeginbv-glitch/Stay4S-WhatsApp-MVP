@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Stay4S Computer-Use Agent v2.1
-Fixed: model-specific stop tokens, think:false for qwen3, simpler prompt.
+Stay4S Computer-Use Agent v3.0
+Verbeteringen t.o.v. v2.1:
+- Conversation history: model weet wat het al gedaan heeft (geen loops)
+- Multi-command splitting: splitst response op | of nieuwe regels
+- State tracking: vertelt model wat de volgende stap is
+- Beter prompt: duidelijke instructie over voortgang
 """
-import os, sys, time, json, logging, subprocess, tempfile, re
+import os, sys, time, json, logging, subprocess, re
 import requests
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
@@ -14,7 +18,7 @@ PRIMARY_MODEL = os.environ.get("COMPUTERUSE_MODEL", "eigen-cyc6")
 FALLBACK_MODEL = "qwen3:1.7b"
 DISPLAY = ":99"
 SCREEN_W, SCREEN_H = 1280, 720
-MAX_STEPS = 20
+MAX_STEPS = 15
 ALLOWED_APPS = ["mousepad", "thunar", "firefox-esr", "xterm", "galculator"]
 PROOF_DIR = "/tmp/computer_use_proof"
 os.makedirs(PROOF_DIR, exist_ok=True)
@@ -28,8 +32,8 @@ def ocr_screenshot(image_path):
     result = subprocess.run(["tesseract", image_path, "-", "--psm", "6"],
                           capture_output=True, text=True, timeout=10)
     text = result.stdout.strip()
-    if len(text) > 1000:
-        text = text[:1000] + "\n[...]"
+    if len(text) > 800:
+        text = text[:800] + "\n[...]"
     return text
 
 def get_screen_state():
@@ -44,7 +48,7 @@ def get_screen_state():
     return {"screen_text": screen_text, "active_window": active_win, "screenshot": img_path}
 
 def ask_model(model, messages, timeout=60):
-    """Vraag model via /api/chat met model-specifieke parameters."""
+    """Vraag model via /api/chat met model-specifieke parameters + conversation history."""
     if "eigen" in model.lower():
         stop_tokens = ["<|eot|>", "<|user|>", "<|assistant|>"]
         extra_body = {}
@@ -58,7 +62,7 @@ def ask_model(model, messages, timeout=60):
             "stream": False,
             "options": {
                 "temperature": 0.3,
-                "num_predict": 300,
+                "num_predict": 200,
                 "num_ctx": 2048,
                 "top_p": 0.9,
                 "stop": stop_tokens,
@@ -69,20 +73,29 @@ def ask_model(model, messages, timeout=60):
         if resp.status_code == 200:
             data = resp.json()
             content = data.get("message", {}).get("content", "").strip()
-            if not content:
-                logger.warning(f"{model} returned empty content")
             return content if content else None
-        logger.warning(f"{model} HTTP {resp.status_code}")
-        return None
-    except requests.exceptions.Timeout:
-        logger.warning(f"{model} timeout ({timeout}s)")
         return None
     except Exception as e:
         logger.error(f"{model} error: {e}")
         return None
 
+def split_multi_command(response):
+    """Split multi-command response op |, nieuwe regels, of slashes."""
+    if not response:
+        return []
+    commands = []
+    # Split op | of nieuwe regels
+    parts = re.split(r'[|\n]', response)
+    for part in parts:
+        part = part.strip()
+        if part:
+            cmd = parse_command(part)
+            if cmd:
+                commands.append(cmd)
+    return commands if commands else []
+
 def parse_command(response):
-    """Parse AI response naar commando. Ondersteunt plain text en JSON."""
+    """Parse AI response naar een commando."""
     if not response:
         return None
     response = response.strip()
@@ -92,8 +105,8 @@ def parse_command(response):
         r'(CLICK:\s*\d+\s*,\s*\d+)',
         r'(OPEN:\s*\w+)',
         r'(DONE)',
-        r'(SCREENSHOT)',
         r'(WAIT:\s*[\d.]+)',
+        r'(SCROLL:\s*\w+)',
     ]
     for pattern in patterns:
         match = re.search(pattern, response, re.IGNORECASE)
@@ -105,20 +118,15 @@ def parse_command(response):
             data = json.loads(json_match.group())
             if "action" in data:
                 return data["action"]
-            if "command" in data:
-                return data["command"]
-    except (json.JSONDecodeError, AttributeError):
+    except:
         pass
     resp_lower = response.lower()
-    if "done" in resp_lower or "klaar" in resp_lower:
+    if any(w in resp_lower for w in ["done", "klaar", "voltooid", "finished"]):
         return "DONE"
-    if "enter" in resp_lower:
+    if "enter" in resp_lower and "press" in resp_lower:
         return "PRESS: enter"
-    if "type" in resp_lower and ":" in response:
-        # Try to extract what comes after the colon
-        parts = response.split(":", 1)
-        if len(parts) > 1 and parts[1].strip():
-            return f"TYPE: {parts[1].strip()}"
+    if "enter" in resp_lower and len(resp_lower) < 20:
+        return "PRESS: enter"
     return None
 
 def execute_action(action):
@@ -142,8 +150,12 @@ def execute_action(action):
             return {"status": "error", "action": "out of bounds"}
         elif cmd == "PRESS":
             key = params.lower().strip()
-            blocked = ["alt+f4", "ctrl+alt+del"]
-            if key in blocked:
+            # Map common names to xdotool key names
+            key_map = {"enter": "Return", "return": "Return", "esc": "Escape",
+                       "escape": "Escape", "tab": "Tab", "space": "space",
+                       "backspace": "BackSpace", "delete": "Delete"}
+            key = key_map.get(key, key)
+            if key in ["alt+f4", "ctrl+alt+del"]:
                 return {"status": "error", "action": f"blocked: {key}"}
             subprocess.run(["xdotool", "key", key], env=env, check=True, timeout=10)
             return {"status": "ok", "action": f"pressed: {key}"}
@@ -158,84 +170,145 @@ def execute_action(action):
             subprocess.Popen([app], env=env, start_new_session=True)
             time.sleep(3)
             return {"status": "ok", "action": f"opened: {app}"}
-        elif cmd == "SCREENSHOT":
-            img = take_screenshot("action")
-            text = ocr_screenshot(img)
-            return {"status": "ok", "action": "screenshot", "screen_text": text}
         elif cmd == "DONE":
             return {"status": "done", "action": "task complete"}
         else:
             return {"status": "error", "action": f"unknown: {cmd}"}
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "action": f"timeout: {cmd}"}
     except Exception as e:
         return {"status": "error", "action": f"error: {str(e)[:80]}"}
 
-PROMPT_TMPL = "Je bent een computer-use AI. Je ziet dit scherm:\n\n{screen_text}\n\nTaak: {task}\n\nGeef EEN commando. Alleen het commando.\nCommandos: TYPE: <tekst> | PRESS: enter | OPEN: mousepad | DONE\n\nCommando:"
+def build_prompt_with_history(task, screen_text, action_history):
+    """Bouw prompt met conversation history zodat model voortgang kent."""
+    history_str = ""
+    if action_history:
+        history_str = "\n\nEerdere acties (al uitgevoerd):\n"
+        for i, (cmd, result) in enumerate(action_history, 1):
+            status = "OK" if result.get("status") == "ok" else "FOUT"
+            history_str += f"  {i}. {cmd} -> {status}\n"
+        history_str += "\nJe hebt al acties uitgevoerd. Ga door met de VOLGENDE stap.\n"
+    else:
+        history_str = "\nDit is de eerste stap. Begin met de taak.\n"
+    
+    prompt = f"""Je bent een computer-use AI op een Linux desktop.
+
+Scherm tekst:
+{screen_text}
+
+Taak: {task}{history_str}
+Geef EEN commando voor de volgende stap. Alleen het commando.
+Commandos: TYPE: <tekst> | PRESS: enter | PRESS: tab | OPEN: mousepad | DONE
+
+Als de taak klaar is, zeg: DONE
+Commando:"""
+    return prompt
 
 def run_task(task, max_steps=MAX_STEPS):
     logger.info(f"=== START TAAK: {task} ===")
     os.environ["DISPLAY"] = DISPLAY
+    
+    # Ensure Xvfb + openbox
     xvfb_check = subprocess.run(["pgrep", "-f", "Xvfb :99"], capture_output=True, text=True)
     if xvfb_check.returncode != 0:
         subprocess.Popen(["Xvfb", DISPLAY, "-screen", "0", f"{SCREEN_W}x{SCREEN_H}x24"], start_new_session=True)
         time.sleep(2)
+    ob_check = subprocess.run(["pgrep", "-f", "openbox"], capture_output=True, text=True)
+    if ob_check.returncode != 0:
+        subprocess.Popen(["openbox"], env={**os.environ, "DISPLAY": DISPLAY}, start_new_session=True)
+        time.sleep(2)
+    
     steps = []
+    action_history = []  # Track wat de AI al gedaan heeft
     model_used = PRIMARY_MODEL
     fallback_used = False
+    conversation = []  # Full conversation history for the model
+    
     for step_num in range(1, max_steps + 1):
+        # 1. Schermstatus
         state = get_screen_state()
         screen_text = state["screen_text"] or "[leeg scherm]"
-        prompt = PROMPT_TMPL.format(task=task, screen_text=screen_text)
+        
+        # 2. Bouw prompt MET history
+        prompt = build_prompt_with_history(task, screen_text, action_history)
+        
+        # 3. Voeg toe aan conversation (houd laatste 5 messages voor context)
+        user_msg = {"role": "user", "content": prompt}
+        conversation.append(user_msg)
+        if len(conversation) > 6:
+            conversation = conversation[-6:]
+        
+        # 4. Vraag AI
         logger.info(f"Stap {step_num}: Vraag {model_used}...")
-        messages = [{"role": "user", "content": prompt}]
-        ai_response = ask_model(model_used, messages, timeout=60)
+        ai_response = ask_model(model_used, conversation, timeout=60)
+        
         if ai_response is None and not fallback_used:
             logger.warning(f"{model_used} faalde, fallback naar {FALLBACK_MODEL}")
             model_used = FALLBACK_MODEL
             fallback_used = True
-            ai_response = ask_model(model_used, messages, timeout=90)
+            ai_response = ask_model(model_used, conversation, timeout=90)
+        
         if ai_response is None:
-            logger.error("Beide modellen faalden")
             steps.append({"step": step_num, "error": "both models failed"})
             break
-        logger.info(f"AI ({model_used}): {ai_response[:120]}")
-        command = parse_command(ai_response)
-        if command is None:
-            logger.warning(f"Geen commando gevonden in: {ai_response[:80]}")
+        
+        # Voeg AI response toe aan conversation
+        conversation.append({"role": "assistant", "content": ai_response})
+        
+        logger.info(f"AI ({model_used}): {ai_response[:100]}")
+        
+        # 5. Parse commando(s) -- probeer multi-command split
+        commands = split_multi_command(ai_response)
+        if not commands:
+            single = parse_command(ai_response)
+            commands = [single] if single else []
+        
+        if not commands:
+            logger.warning(f"Geen commando in: {ai_response[:80]}")
             if not fallback_used:
                 model_used = FALLBACK_MODEL
                 fallback_used = True
-                logger.info(f"Opnieuw met {model_used}...")
-                ai_response = ask_model(model_used, messages, timeout=90)
-                command = parse_command(ai_response)
-            if command is None:
+                ai_response = ask_model(model_used, conversation, timeout=90)
+                commands = split_multi_command(ai_response) or ([parse_command(ai_response)] if parse_command(ai_response) else [])
+            if not commands:
                 steps.append({"step": step_num, "ai_response": ai_response[:200], "error": "unparseable"})
+                action_history.append(("(unparseable)", {"status": "error"}))
                 continue
-        logger.info(f"Commando: {command}")
-        result = execute_action(command)
-        proof_path = take_screenshot(f"step{step_num}_after")
-        steps.append({
-            "step": step_num,
-            "model": model_used,
-            "screen_before": screen_text[:200],
-            "ai_response": ai_response[:200],
-            "command": command,
-            "result": result,
-            "screenshot_after": proof_path,
-        })
-        if result.get("status") == "done":
-            logger.info(f"=== VOLTOOID in {step_num} stappen ===")
-            return {"status": "complete", "steps": steps, "total_steps": step_num,
-                    "model_used": model_used, "fallback_used": fallback_used}
+        
+        # 6. Voer elk commando uit (max 2 per stap voor safety)
+        for cmd in commands[:2]:
+            logger.info(f"Uitvoeren: {cmd}")
+            result = execute_action(cmd)
+            action_history.append((cmd, result))
+            
+            # Screenshot na actie
+            proof_path = take_screenshot(f"step{step_num}_after")
+            
+            steps.append({
+                "step": step_num,
+                "model": model_used,
+                "ai_response": ai_response[:200],
+                "command": cmd,
+                "result": result,
+                "screenshot_after": proof_path,
+            })
+            
+            if result.get("status") == "done":
+                logger.info(f"=== VOLTOOID in {step_num} stappen ===")
+                return {"status": "complete", "steps": steps, "total_steps": step_num,
+                        "model_used": model_used, "fallback_used": fallback_used,
+                        "action_history": [h[0] for h in action_history]}
+            
+            time.sleep(0.5)
+        
         time.sleep(1)
+    
     logger.warning(f"=== MAX STAPPEN ({max_steps}) ===")
     return {"status": "max_steps", "steps": steps, "total_steps": max_steps,
-            "model_used": model_used, "fallback_used": fallback_used}
+            "model_used": model_used, "fallback_used": fallback_used,
+            "action_history": [h[0] for h in action_history]}
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Stay4S Computer-Use Agent v2.1")
+    parser = argparse.ArgumentParser(description="Stay4S Computer-Use Agent v3.0")
     parser.add_argument("--task", type=str, required=True)
     parser.add_argument("--steps", type=int, default=MAX_STEPS)
     parser.add_argument("--model", type=str, default=PRIMARY_MODEL)
