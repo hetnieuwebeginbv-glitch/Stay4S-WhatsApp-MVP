@@ -102,8 +102,15 @@ def analyze_message(text: str) -> dict:
     for category, info in SCAM_INDICATORS.items():
         matches = []
         for pattern in info["patterns"]:
-            if pattern.lower() in text_lower:
-                matches.append(pattern)
+            # Use word boundaries to avoid false positives (e.g. "ING" in "openingstijden")
+            if len(pattern) <= 5:
+                # Short patterns: strict word boundary matching
+                if re.search(r'\b' + re.escape(pattern) + r'\b', text, re.IGNORECASE):
+                    matches.append(pattern)
+            else:
+                # Long patterns: substring matching is fine
+                if pattern.lower() in text_lower:
+                    matches.append(pattern)
 
         if matches:
             score = min(info["weight"], info["weight"])
