@@ -1,0 +1,8 @@
+/sdcard/Android/data/.nomedia
+/sdcard/Android/obb/.nomedia
+/sdcard/Music/.thumbnails/.database_uuid
+/sdcard/Music/.thumbnails/.nomedia
+/sdcard/Pictures/.thumbnails/.database_uuid
+/sdcard/Pictures/.thumbnails/.nomedia
+/sdcard/Movies/.thumbnails/.database_uuid
+/sdcard/Movies/.thumbnails/.nomedia

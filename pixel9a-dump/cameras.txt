@@ -1,0 +1,12 @@
+
+    Facing: Back
+    Orientation: 90
+        [458760 (maxSize) 524293 (facing) 589826 (availableFocalLengths) 786444 (availableCapabilities) ]
+        [917518 (orientation) 1048578 (availableModes) 1179648 (availableFaceDetectModes) 1179650 (maxFaceCount) ]
+      android.sensor.orientation (e000e): int32[1]
+      android.lens.facing (80005): byte[1]
+        [458752 (gpsCoordinates) 458753 (gpsProcessingMethod) 458754 (gpsTimestamp) 458755 (orientation) ]
+        [-2097151974 (faceLandmark.depth) -2097151972 (faceOrientation) -2097151937 (faceDetectionTimeStamp) -2097151934 (faceAttribute.ids) ]
+        [-2097151791 -2097151820 (IsMetadataValid) -2097151760 (proxyGraphFailureReason) -2097151759 (proxyCameraOrientation) ]
+        [458752 (gpsCoordinates) 458753 (gpsProcessingMethod) 458754 (gpsTimestamp) 458755 (orientation) ]
+
