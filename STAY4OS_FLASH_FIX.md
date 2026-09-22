@@ -62,11 +62,24 @@ if d[:8]==b'ANDROID!':
 - [ ] Telefoon weer op LineageOS
 - [ ] Daarna: Stay4OS-fix + nieuwe poging
 
+## EXTRA — LineageOS Browser-Flash-Tool (gevonden door Mitchell)
+LineageOS biedt een **rechtstreeks-in-browser flash-tool** (WebUSB):
+- Modus: ADB (recovery), Fastboot (fastbootd), Odin, Amlogic
+- Voordeel: omzeilt lokale fastboot-problemen, officiële tooling
+- Werkt met: Google Chrome/Edge (WebUSB)
+- Stappen: telefoon in fastboot → verbind via browser → flash
+
+Dit kan de **super-partitie + fastbootd-problemen** oplossen omdat het
+de officiële LineageOS-flashpipeline gebruikt.
+- Link: de LineageOS-wiki installatiepagina voor tegu (device-specifiek)
+- Test: start telefoon in fastboot, open de tool in browser, verbind
+
 ## EXTRA — Super-partitie
 - wipe-super faalde (super_empty.img niet parseerbaar)
 - Gevolg: super-metadata mogelijk inconsistent
 - Fix: gebruik de OFFICIELE super_empty.img (niet onze 5KB versie)
 - Of: flashen via ADB sideload (bewezen route, werkt)
+- Of: browser-flash-tool (nieuw, kan fastbootd direct aansturen)
 
 ## CONCLUSIE
 De Stay4OS-build is 90% goed (kernel + systeem gebouwd). De fix is:
