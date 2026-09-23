@@ -1,0 +1,23 @@
+// Android.bp — Stay4AI privileged app in Stay4OS
+// Plaats in packages/apps/Stay4AI/
+
+android_app {
+    name: "Stay4AI",
+    manifest: "AndroidManifest.xml",
+    srcs: [
+        "src/**/*.java",
+        "aidl/**/*.aidl",
+    ],
+    aidl: {
+        local_include_dirs: ["aidl"],
+    },
+    platform_apis: true,        // systeem-app met systeemrechten
+    privileged: true,           // in /system/priv-app
+    certificate: "platform",    // ondertekend met platform-key
+    required: [
+        "privapp-permissions-stay4ai.xml",
+    ],
+    static_libs: [
+        "androidx.annotation",
+    ],
+}

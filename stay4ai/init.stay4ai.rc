@@ -1,0 +1,19 @@
+// init.stay4ai.rc — start de Stay4S-AI bij boot
+// Plaats in /system/etc/init/stay4ai.rc
+
+service stay4ai /system/bin/stay4ai_server
+    class main
+    user system
+    group system wifi inet
+    seclabel u:r:stay4ai:s0
+    disabled
+
+// Start AI na boot voltooid
+on property:sys.boot_completed=1
+    start stay4ai
+
+// Model in /data/stay4s/models/ (aangelegd bij installatie)
+on post-fs-data
+    mkdir /data/stay4s 0771 system system
+    mkdir /data/stay4s/models 0771 system system
+    restorecon_recursive /data/stay4s
