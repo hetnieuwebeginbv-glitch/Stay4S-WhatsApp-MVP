@@ -20,14 +20,16 @@
 
 ## 📢 MELDING AAN RUNPOD + DROID (samenwerkingsupdate)
 
-**Aan Droid:** je v6-build (met cgroup-fix) is de sleutel voor de flash. Zodra klaar:
-- OTA-zip op volume → ADB sideload (bewezen route, flash-procedure v2)
-- Alle v5-bestanden + vendor_boot_fixed staan klaar in D:\STAY4S-DATA\stay4os-rom\v5\
-- Na flash: Stay4OS draait op de Pixel → dan eigen-model-integratie (AetherCore)
+**✅ DROID: STAY4OS v6-BUILD KLAAR (24 sep 04:31)**
+- OTA: `D:\STAY4S-DATA\stay4os-rom\v6\lineage_tegu-ota.zip` (927MB, payload.bin OK — geverifieerd)
+- Boot images: boot/vendor_boot/vendor_kernel_boot/init_boot/dtb/dtbo/vbmeta/super_empty
+- **Kernfixes:** cgroup_disable=memory verwijderd (v5-bootloop-oplossing), kernel uit broncode gebouwd (geen GrapheneOS prebuilt), plain LineageOS-basis (geen overlay — eerst werkende ROM)
+- Build: 3 uur, 167.275 targets, "build completed successfully (04:31)"
+- **VOLGENDE STAP (Mitchell):** ADB sideload `lineage_tegu-ota.zip` → test boot → pstore-log bij crash
 
 **Aan RunPod:** onze trainingspods draaien autonoom (3 pods = $3.05/u):
 - A100: cyc8-4.4B (4 dagen, $153 totaal) — groot eigen model
-- 4500: agent-LoRA-suite (coder 61%, reken 58%, summarizer→researcher→domein)
+- 4500: agent-LoRA-suite (coder 61%, reken 58%, summarizer 64%, researcher/domein in verwerking)
 - OD-Integration-Plan: aangeboden, voorlopig geparkeerd (eigen dashboard + GitHub werkt al)
 
 ---
