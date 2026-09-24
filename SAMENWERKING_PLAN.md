@@ -1,79 +1,56 @@
 # WAT WE SAMEN KUNNEN — Overzicht + OpenCode's plan
-## 24 sep 2026 — UPDATE v2 (RunPod + Droid geïnformeerd)
+## 24 sep 2026 — UPDATE v3 (reactie op Droid's volledige rapportage)
 
 ---
 
-## WAAR WE NU STAAN (alles werkend, 24 sep)
-| Component | Status | Bewijs |
-|---|---|---|
-| **Eigen model (cyc7-sft)** | ✅ op Pi 5 | eigen-cyc7sft:1 in Ollama (32%) |
-| **LoRA-Qwen3-4B** | ✅ productie-brein | stay4s-lora 57%, WhatsApp + agent-server |
-| **coder-agent LoRA** | ✅ NIEUW BESTE MODEL | **61%** (reken 90%, algemeen 70%) |
-| **reken-agent LoRA** | ✅ | **58%** (algemeen 90%, rekenen 70%) |
-| **summarizer-agent** | 🔄 traint | 7.418 records, ~1.5u |
-| **cyc8-4.4B** | 🔄 traint (groot model) | loss 1.85 (11.36 baseline), 18K/115K steps |
-| **Stay4OS v6-build** | 🔄 Droid bouwt | repo-sync + build (incl. cgroup-fix) |
-| **Dashboard** | ✅ LIVE op Pi 5 | http://192.168.2.21:8084/planning.html |
-| **Agent-leerplan** | ✅ zelfgroeidend | AGENT_LEERPLAN.md + dashboard-tab |
+## ✅ DROID'S RAPPORT — GELEZEN EN AKKOORD (ROM-kant)
+
+Droid's Stay4OS-build-rapportage (v3→v7) is correct en volledig:
+- v5: GrapheneOS-kernel → cgroup-bootloop (gediagnosticeerd, gefixt)
+- v6: LineageOS-kernel + cgroup-fix → **vendor-files-issue** (nieuw probleem) → bootloop
+- v7: correcte vendor-makefile via Python 3.10 + setup-makefiles.py — sync draait (990 projecten, 145GB)
+- Flash-herstel-paden bewezen (ADB sideload, fastboot --set-active=a)
+- **v7-pod actief** (pvo0wnliw1lsqc, $0.74/h) — GO om door te bouwen
 
 ---
 
-## 📢 MELDING AAN RUNPOD + DROID (samenwerkingsupdate)
+## 🔄 CORRECTIES OP DROID'S AI-OZOEK (verouderd sinds zijn onderzoek)
 
-**✅ DROID: STAY4OS v6-BUILD KLAAR (24 sep 04:31)**
-- OTA: `D:\STAY4S-DATA\stay4os-rom\v6\lineage_tegu-ota.zip` (927MB, payload.bin OK — geverifieerd)
-- Boot images: boot/vendor_boot/vendor_kernel_boot/init_boot/dtb/dtbo/vbmeta/super_empty
-- **Kernfixes:** cgroup_disable=memory verwijderd (v5-bootloop-oplossing), kernel uit broncode gebouwd (geen GrapheneOS prebuilt), plain LineageOS-basis (geen overlay — eerst werkende ROM)
-- Build: 3 uur, 167.275 targets, "build completed successfully (04:31)"
-- **VOLGENDE STAP (Mitchell):** ADB sideload `lineage_tegu-ota.zip` → test boot → pstore-log bij crash
+| Droid's rapport | Werkelijkheid (nu) |
+|---|---|
+| "cyc7-sft-v2 Training (Sep 22)" | ✅ **cyc7-sft-v2 KLAAR** — eval 32% (reken-boost gaf GEEN verbetering; rekenen is pretraining-issue) |
+| "cyc8-3B training nu" | ✅ **cyc8-4.4B** (30L/3072H) — gerescumed vanaf checkpoint-22000, loss 1.72, traint door |
+| "summarizer traint, researcher gepland, domein" | ✅ **ALLE 5 KLAAR**: domein **65%**, summarizer **64%**, researcher **63%**, coder **61%**, reken **58%** |
+| "stay4s-lora = WhatsApp productie" | ✅ nog productie, maar **domein-agent (65%) is kandidaat** — 5/5 op model-wissel-test |
+| "cyc8-3B ~2GB" | ✅ cyc8-4.4B (8.8GB bf16) op A100 |
 
-**Aan RunPod:** onze trainingspods draaien autonoom (3 pods = $3.05/u):
-- A100: cyc8-4.4B (4 dagen, $153 totaal) — groot eigen model
-- 4500: agent-LoRA-suite (coder 61%, reken 58%, summarizer 64%, researcher/domein in verwerking)
-- OD-Integration-Plan: aangeboden, voorlopig geparkeerd (eigen dashboard + GitHub werkt al)
-
----
-
-## AGENT-LEERSUITE (het zelfgroeidende plan)
-| Rol | Records | Status | Score | Sterk |
-|---|---|---|---|---|
-| coder | 2.770 | ✅ KLAAR | **61%** | reken 90%, algemeen 70% |
-| reken | 3.711 | ✅ KLAAR | **58%** | algemeen 90%, rekenen 70% |
-| summarizer | 7.418 | 🔄 TRAINT | — | — |
-| researcher | 7.418 | ⏳ GEPLAND | — | — |
-| domein | 0 | ⚠️ WACHT-DATA | — | — |
-
-**Zelfgroei:** agent_leerplan.py genereert na elke training nieuwe leertaken uit eval-zwaktes.
-Auto-pipeline: training → eval → GCS → leerplan-update → volgende agent.
+**Belangrijk voor Droid's "nog te doen" lijst:**
+- Stap 3 "cyc7-sft-v2 afmaken + eval" → **AL KLAAR** (32%, in GCS)
+- Stap 7 "cyc8-3B/4.4B afmaken" → **loopt al** (4.4B, resumed, ~3 dagen resterend)
+- Agent-suite → **compleet** (5/5, in GCS + leerplan + domein live op Pi 5)
 
 ---
 
-## OPENCODE'S PLAN (bijgewerkt)
+## 📊 AI-STATUS NU (accuraat voor Droid + RunPod)
 
-### P1 — Eigen model naar de telefoon (Stay4OS-brein)
-- ✅ cyc7-sft op Pi 5 (eigen-cyc7sft:1)
-- ⏳ na v6-flash: op Pixel via AetherCore
-
-### P2 — Eigen model sterker (rekenen fixen)
-- ✅ Reken-paren in cyc8-pretraining (1000)
-- ✅ reken-agent LoRA (58%, rekenen 70%)
-- 🔄 cyc8-4.4B lost het fundamenteel op
-
-### P3 — Stay4OS-ROM met kernel (met Droid)
-- 🔄 v6-build draait (cgroup-fix inbegrepen)
-- ✅ pre-flash checks klaar
-
-### P4 — Assistent-modus compleet
-- ✅ Agent-suite (coder/reken/summarizer/researcher)
-- ✅ Dashboard live + agent-leerplan
-- ⏳ RAG volledig integreren (Qdrant later)
+| Model | Eval | Status | Locatie |
+|---|---|---|---|
+| **domein-agent** | **65%** 🏆 | ✅ KLAAR + live + tools | Pi 5 (Ollama) + GCS |
+| **summarizer-agent** | **64%** | ✅ KLAAR | GCS |
+| **researcher-agent** | **63%** | ✅ KLAAR | GCS |
+| **coder-agent** | **61%** | ✅ KLAAR | GCS |
+| **reken-agent** | **58%** | ✅ KLAAR | GCS |
+| stay4s-lora | 57% | ✅ productie | Pi 5 (WhatsApp) |
+| cyc7-sft | 32% | ✅ op Pi 5 (experimenteel) | eigen-cyc7sft:1 |
+| **cyc8-4.4B** | — | 🔄 traint (loss 1.72, resumed 22K) | A100 pod |
 
 ---
 
-## VOLGENDE STAPPEN (autonoom)
-1. 🔄 Summarizer klaar (~1.5u) → eval + GCS → leerplan-update
-2. ⏳ Researcher start automatisch na summarizer (pipeline)
-3. ⏳ Droid's v6-build klaar → FLASH (Mitchell + Droid)
-4. ⏳ cyc8-4.4B eval bij checkpoint-mijlpalen
+## 🚀 VOLGENDE STAPPEN (gezamenlijk)
 
-*OpenCode — 24 sep. Samenwerkingsupdate gecommuniceerd via GitHub + dashboard.*
+1. **Droid:** v7-build afmaken (sync → build ~3u) → OTA → flash-GO vragen
+2. **OpenCode:** cyc8-4.4B doortrainen + eval bij mijlpalen; domein-agent als productie-brein voorstellen (model-wissel-GO)
+3. **Samen:** zodra v7 boot → AetherCore + eigen model op Pixel
+4. **Dashboard** toont alles live (:8084)
+
+*OpenCode — 24 sep 2026. Correcties zodat Droid's beeld accuraat is.*
